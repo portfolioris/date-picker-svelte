@@ -4,6 +4,7 @@
   import { getInnerLocale } from './locale'
   import type { Locale } from './locale'
   import { createEventDispatcher } from 'svelte'
+  import { checkModifiers, checkShortcut } from './shortcuts'
 
   const dispatch = createEventDispatcher<{ select: undefined }>()
 
@@ -99,8 +100,8 @@
   $: getMonth(shownDate)
   $: setMonth(month)
 
-  let dayOfMonth = value?.getDate() || null
-  $: dayOfMonth = value?.getDate() || null
+  let dayOfMonth = shownDate.getDate()
+  $: dayOfMonth = shownDate.getDate()
 
   $: calendarDays = getCalendarDays(shownDate, iLocale.weekStartsOn)
 
@@ -181,33 +182,37 @@
     e.preventDefault()
   }
   function keydown(e: KeyboardEvent) {
-    let shift = e.shiftKey || e.altKey
     if ((e.target as HTMLElement)?.tagName === 'SELECT') {
       return
     }
-    if (shift) {
+    if (checkModifiers(e, { shift: true }) || checkModifiers(e, { alt: true })) {
       shiftKeydown(e)
       return
-    } else if (e.key === 'ArrowUp') {
+    } else if (checkShortcut(e, 'ArrowUp')) {
       updateValue((value) => {
         value.setDate(value.getDate() - 7)
         return value
       })
-    } else if (e.key === 'ArrowDown') {
+    } else if (checkShortcut(e, 'ArrowDown')) {
       updateValue((value) => {
         value.setDate(value.getDate() + 7)
         return value
       })
-    } else if (e.key === 'ArrowLeft') {
+    } else if (checkShortcut(e, 'ArrowLeft')) {
       updateValue((value) => {
         value.setDate(value.getDate() - 1)
         return value
       })
-    } else if (e.key === 'ArrowRight') {
+    } else if (checkShortcut(e, 'ArrowRight')) {
       updateValue((value) => {
         value.setDate(value.getDate() + 1)
         return value
       })
+    } else if (checkShortcut(e, 'Enter')) {
+      if (value === null) {
+        value = shownDate
+      }
+      dispatch('select')
     } else {
       return
     }
@@ -274,30 +279,35 @@
         >
       </div>
     </div>
-    <div class="header">
-      {#each Array(7) as _, i}
-        {#if i + iLocale.weekStartsOn < 7}
-          <div class="header-cell">{iLocale.weekdays[iLocale.weekStartsOn + i]}</div>
-        {:else}
-          <div class="header-cell">{iLocale.weekdays[iLocale.weekStartsOn + i - 7]}</div>
-        {/if}
-      {/each}
-    </div>
-    {#each Array(6) as _, weekIndex}
-      <div class="week">
-        {#each calendarDays.slice(weekIndex * 7, weekIndex * 7 + 7) as calendarDay}
-          <div
-            class="cell"
-            on:click={() => selectDay(calendarDay)}
-            class:disabled={!dayIsInRange(calendarDay, min, max)}
-            class:selected={calendarDay.month === month && calendarDay.number === dayOfMonth}
-            class:other-month={calendarDay.month !== month}
-          >
-            <span>{calendarDay.number}</span>
-          </div>
+    <div class="calendar">
+      <div class="header">
+        {#each Array(7) as _, i}
+          {#if i + iLocale.weekStartsOn < 7}
+            <div class="header-cell">{iLocale.weekdays[iLocale.weekStartsOn + i]}</div>
+          {:else}
+            <div class="header-cell">{iLocale.weekdays[iLocale.weekStartsOn + i - 7]}</div>
+          {/if}
         {/each}
       </div>
-    {/each}
+      {#each Array(6) as _, weekIndex}
+        <div class="week">
+          {#each calendarDays.slice(weekIndex * 7, weekIndex * 7 + 7) as calendarDay}
+            <div
+              class="cell"
+              on:click={() => selectDay(calendarDay)}
+              class:disabled={!dayIsInRange(calendarDay, min, max)}
+              class:selected={value !== null &&
+                calendarDay.month === month &&
+                calendarDay.number === dayOfMonth}
+              class:highlighted={calendarDay.month === month && calendarDay.number === dayOfMonth}
+              class:other-month={calendarDay.month !== month}
+            >
+              <span>{calendarDay.number}</span>
+            </div>
+          {/each}
+        </div>
+      {/each}
+    </div>
   </div>
 </div>
 
@@ -308,7 +318,6 @@
     background: var(--date-picker-background, #ffffff)
     user-select: none
     -webkit-user-select: none
-    padding: 0.5rem
     cursor: default
     font-size: 0.75rem
     border: 1px solid rgba(103, 113, 137, 0.3)
@@ -316,16 +325,14 @@
     box-shadow: 0px 2px 6px rgba(#000000,0.08), 0px 2px 6px rgba(#000000,0.11)
     outline: none
     transition: all 80ms cubic-bezier(0.4, 0.0, 0.2, 1)
-    &:focus
-      border-color: var(--date-picker-highlight-border, #0269f7)
-      box-shadow: 0px 0px 0px 2px var(--date-picker-highlight-shadow, rgba(#0269f7, 0.4))
   .tab-container
     outline: none
   .top
     display: flex
     justify-content: center
     align-items: center
-    padding-bottom: 0.5rem
+    padding: 0.5rem
+    padding-bottom: 0.3rem
   .dropdown
     margin-left: 0.25rem
     margin-right: 0.25rem
@@ -427,4 +434,16 @@
       color: var(--date-picker-selected-color, inherit)
       background: var(--date-picker-selected-background, rgba(2, 105, 247, 0.2))
       border: 2px solid var(--date-picker-highlight-border, #0269f7)
+  .date-time-picker:focus .highlighted
+    box-shadow: 0px 0px 0px 2px var(--date-picker-highlight-shadow, rgba(#0269f7, 0.4))
+
+  .calendar
+    padding: 0.5rem
+    padding-top: 0.3rem
+    outline: none
+    border-radius: 3px
+  // .date-time-picker:focus .calendar
+  //   transition: all 80ms cubic-bezier(0.4, 0.0, 0.2, 1)
+  //   box-shadow: 0px 0px 0px 1px var(--date-picker-highlight-border, #0269f7), 0px 0px 0px 3px var(--date-picker-highlight-shadow, rgba(#0269f7, 0.4))
+
 </style>
